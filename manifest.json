@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "harshith.monitor",
+  "name": "Display",
+  "version": "0.1.0",
+  "author": "Omarchy + Harshith",
+  "license": "MIT",
+  "homepage": "https://github.com/Harshith292002/omarchy-display-manager",
+  "description": "Display controls, connected monitors, and automatic hyprmoncfg layouts in one panel",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "Panel.qml"
+  },
+  "barWidget": {
+    "displayName": "Display",
+    "description": "Display controls and automatic multi-monitor layouts",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right"
+  },
+  "hyprmoncfg": {
+    "package": "hyprmoncfg",
+    "minimumVersion": "1.12.0",
+    "protocolVersion": 1
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.monitor"
+  }
+}

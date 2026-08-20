@@ -1,0 +1,17 @@
+Omarchy Display Manager
+=======================
+
+Panel.qml and Model.js are derived from the built-in Omarchy Display plugin:
+
+  https://github.com/basecamp/omarchy
+
+Omarchy is distributed under the MIT License and is copyright David Heinemeier
+Hansson. The original copyright notice is retained in LICENSE.
+
+The automatic-layout integration interoperates with hyprmoncfg through its
+public version-1 IPC protocol:
+
+  https://github.com/crmne/hyprmoncfg
+
+hyprmoncfg is distributed under the MIT License and is copyright Carmine
+Paolino. This repository does not redistribute hyprmoncfg source code.
