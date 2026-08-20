@@ -20,6 +20,34 @@ privileged command is hidden inside the shell process.
 - One-click access to the hyprmoncfg layout editor
 - Full mouse and keyboard navigation
 
+## Screenshots
+
+### Everyday display controls
+
+Brightness, text size, scaling, connected displays, and the active automatic
+layout are available from one bar panel.
+
+<p align="center">
+  <img src="docs/screenshots/display-overview.png" alt="Display panel overview with brightness, text size, scaling, connected displays, and an active automatic layout" width="520">
+</p>
+
+### Profiles and layout editor
+
+The hyprmoncfg service can be toggled in place, while the visual editor remains
+one action away for arranging displays and saving profiles.
+
+![Automatic layout controls and visual layout editor action](docs/screenshots/automatic-layouts.png)
+
+### Guided first run
+
+When hyprmoncfg is unavailable, the panel explains what it adds and presents a
+clear install action. Installation runs visibly in an Omarchy terminal.
+
+![First-run hyprmoncfg installation action](docs/screenshots/first-run-install.png)
+
+The screenshots were captured on an empty workspace and cropped to the panel.
+The example profile name is anonymized; no personal configuration is included.
+
 ## Requirements
 
 - Omarchy 4.0 or newer with shell plugin support
