@@ -32,6 +32,9 @@ Panel {
   // built-in panel's brightness, text-size, scale, or monitor controls.
   property bool hyprInstalled: false
   property bool hyprInstallKnown: false
+  property bool hyprCompatible: false
+  property bool hyprInstalling: false
+  property string hyprInstalledVersion: ""
   property bool hyprServiceEnabled: false
   property bool hyprServiceActive: false
   property bool hyprServiceKnown: false
@@ -42,6 +45,8 @@ Panel {
   property var hyprDocument: ({ profiles: [], monitors: [], daemon: { running: false } })
   readonly property string hyprRuntimeDir: String(Quickshell.env("XDG_RUNTIME_DIR") || "")
   readonly property string hyprSocketPath: hyprRuntimeDir + "/hyprmoncfgd.sock"
+  readonly property string hyprInstallFailurePath: hyprRuntimeDir + "/hyprmoncfg-display-install.failed"
+  readonly property string hyprInstallCompletePath: hyprRuntimeDir + "/hyprmoncfg-display-install.complete"
   readonly property bool hyprConnected: hyprSocket.connected
   readonly property bool hyprManaged: hyprActionPending
     ? hyprTargetManaged
@@ -57,7 +62,7 @@ Panel {
     : (hyprRecommendedProfile !== "" ? hyprRecommendedProfile : "Automatic switching")
   readonly property string hyprProfileDescription: {
     if (!hyprInstallKnown) return "Checking hyprmoncfg…"
-    if (!hyprInstalled) return "hyprmoncfg is not installed"
+    if (!hyprCompatible) return hyprInstalled ? "hyprmoncfg 1.12.0 or newer is required" : "hyprmoncfg is not installed"
     if (hyprActionPending) return hyprTargetManaged ? "Starting automatic switching…" : "Stopping automatic switching…"
     if (!hyprManaged) return "Off · current layout stays in place"
     if (!hyprConnected) return "Starting the background service…"
@@ -130,7 +135,7 @@ Panel {
     if (section === "textsize") return 0    // slider sentinel at -1, like brightness
     if (section === "scale") return scaleValues.length
     if (section === "monitors") return displays.length
-    if (section === "layouts") return 2
+    if (section === "layouts") return hyprCompatible ? 2 : 1
     return 0
   }
 
@@ -202,7 +207,8 @@ Panel {
       return
     }
     if (focusSection === "layouts") {
-      if (selectedIndex === 0) setHyprManaged(!hyprManaged)
+      if (!hyprCompatible) installHyprmoncfg()
+      else if (selectedIndex === 0) setHyprManaged(!hyprManaged)
       else if (selectedIndex === 1) launchHyprEditor()
     }
     // brightness: no separate action; the slider value is the action.
@@ -284,16 +290,26 @@ Panel {
   }
 
   function checkHyprmoncfg() {
-    if (!hyprVersionProc.running) hyprVersionProc.running = true
+    if (hyprVersionProc.running) return
+    hyprVersionProc.command = [
+      "sh",
+      "-c",
+      "if test \"$3\" = \"1\"; then if test -f \"$1\"; then cat \"$1\"; exit 2; elif ! test -f \"$2\"; then exit 3; fi; fi; if command -v hyprmoncfg >/dev/null 2>&1; then hyprmoncfg version; else exit 1; fi",
+      "sh",
+      root.hyprInstallFailurePath,
+      root.hyprInstallCompletePath,
+      root.hyprInstalling ? "1" : "0"
+    ]
+    hyprVersionProc.running = true
   }
 
   function checkHyprService() {
-    if (!root.hyprInstalled || hyprEnabledProc.running || hyprActiveProc.running) return
+    if (!root.hyprCompatible || hyprEnabledProc.running || hyprActiveProc.running) return
     hyprEnabledProc.running = true
   }
 
   function connectHyprmoncfg() {
-    if (!root.hyprInstalled || !root.hyprServiceActive || root.hyprSocketPath === "/hyprmoncfgd.sock") return
+    if (!root.hyprCompatible || !root.hyprServiceActive || root.hyprSocketPath === "/hyprmoncfgd.sock") return
     if (!hyprSocket.connected) hyprSocket.connected = true
   }
 
@@ -329,7 +345,7 @@ Panel {
   }
 
   function setHyprManaged(enabled) {
-    if (!root.hyprInstalled || hyprServiceProc.running || root.hyprActionPending) return
+    if (!root.hyprCompatible || hyprServiceProc.running || root.hyprActionPending) return
     root.hyprError = ""
     root.hyprActionPending = true
     root.hyprTargetManaged = enabled === true
@@ -340,13 +356,24 @@ Panel {
   }
 
   function launchHyprEditor() {
-    if (!root.hyprInstalled) {
-      root.hyprError = "Install hyprmoncfg to create automatic display layouts."
+    if (!root.hyprCompatible) {
+      root.hyprError = "Install hyprmoncfg 1.12.0 or newer to create automatic display layouts."
       return
     }
     hyprEditorProc.command = ["gtk-launch", "hyprmoncfg-omarchy"]
     hyprEditorProc.startDetached()
     root.close()
+  }
+
+  function installHyprmoncfg() {
+    if (root.hyprRuntimeDir === "" || root.hyprInstalling) {
+      if (root.hyprRuntimeDir === "") root.hyprError = "Could not find the user runtime directory."
+      return
+    }
+    root.hyprInstalling = true
+    root.hyprError = ""
+    hyprInstallPreparation.command = ["rm", "-f", root.hyprInstallFailurePath, root.hyprInstallCompletePath]
+    hyprInstallPreparation.running = true
   }
 
   function setBrightness(value) {
@@ -490,6 +517,7 @@ Panel {
 
   onBrightnessAvailableChanged: clampCursor()
   onDisplaysChanged: clampCursor()
+  onHyprCompatibleChanged: clampCursor()
   onScaleValuesChanged: clampCursor()
   onVisibleSectionsChanged: clampCursor()
 
@@ -508,11 +536,82 @@ Panel {
 
   Process {
     id: hyprVersionProc
-    command: ["hyprmoncfg", "version"]
+    stdout: StdioCollector { id: hyprVersionOutput; waitForEnd: true }
     onExited: function(exitCode) {
+      if (exitCode === 3 && root.hyprInstalling) return
+
+      var installed = exitCode === 0
+      var output = installed ? String(hyprVersionOutput.text || "") : ""
+      var compatible = installed && Model.versionAtLeast(output, "1.12.0")
       root.hyprInstallKnown = true
-      root.hyprInstalled = exitCode === 0
-      if (root.hyprInstalled) root.checkHyprService()
+      root.hyprInstalled = installed
+      root.hyprInstalledVersion = output.trim()
+
+      if (root.hyprInstalling && exitCode === 2) {
+        root.hyprInstalling = false
+        hyprInstallPoll.stop()
+        hyprInstallTimeout.stop()
+        root.hyprError = String(hyprVersionOutput.text || "").trim() === "130"
+          ? "Installation was canceled."
+          : "Installation did not finish. Check the Omarchy terminal and try again."
+        return
+      }
+
+      if (root.hyprInstalling && !compatible) {
+        root.hyprInstalling = false
+        hyprInstallPoll.stop()
+        hyprInstallTimeout.stop()
+        root.hyprError = "The update finished, but hyprmoncfg 1.12.0 or newer is still required."
+        return
+      }
+
+      root.hyprCompatible = compatible
+      if (compatible) {
+        root.hyprInstalling = false
+        hyprInstallPoll.stop()
+        hyprInstallTimeout.stop()
+        root.checkHyprService()
+      } else {
+        hyprSocket.connected = false
+        root.hyprServiceKnown = false
+      }
+    }
+  }
+
+  Process {
+    id: hyprInstallPreparation
+    onExited: function(exitCode) {
+      if (!root.hyprInstalling) return
+      if (exitCode !== 0) {
+        root.hyprInstalling = false
+        root.hyprError = "Could not prepare the hyprmoncfg installation."
+        return
+      }
+      hyprInstaller.command = Model.installProcessArgs()
+      hyprInstaller.startDetached()
+      hyprInstallPoll.restart()
+      hyprInstallTimeout.restart()
+    }
+  }
+
+  Process { id: hyprInstaller }
+
+  Timer {
+    id: hyprInstallPoll
+    interval: 1000
+    repeat: true
+    running: root.hyprInstalling && !root.hyprCompatible
+    onTriggered: root.checkHyprmoncfg()
+  }
+
+  Timer {
+    id: hyprInstallTimeout
+    interval: 300000
+    onTriggered: {
+      if (!root.hyprInstalling) return
+      root.hyprInstalling = false
+      hyprInstallPoll.stop()
+      root.hyprError = "Installation is still waiting. Check the Omarchy terminal and try again."
     }
   }
 
@@ -565,7 +664,7 @@ Panel {
   Timer {
     interval: 1000
     repeat: true
-    running: root.hyprInstalled && root.hyprServiceActive && !root.hyprConnected
+    running: root.hyprCompatible && root.hyprServiceActive && !root.hyprConnected
     onTriggered: {
       root.checkHyprService()
       root.connectHyprmoncfg()
@@ -1037,13 +1136,55 @@ Panel {
               fontFamily: root.bar.fontFamily
             }
 
+            Column {
+              visible: !root.hyprCompatible
+              width: parent.width
+              spacing: Style.space(8)
+
+              Text {
+                width: parent.width
+                text: root.hyprInstalled
+                  ? "Update hyprmoncfg to enable profiles and automatic switching."
+                  : "Install hyprmoncfg to build visual layouts and switch them automatically."
+                color: Qt.darker(root.bar.foreground, 1.4)
+                font.family: root.bar.fontFamily
+                font.pixelSize: Style.font.bodySmall
+                wrapMode: Text.WordWrap
+              }
+
+              Button {
+                id: hyprInstallButton
+                width: parent.width
+                text: root.hyprInstalling
+                  ? (root.hyprInstalled ? "Updating hyprmoncfg…" : "Installing hyprmoncfg…")
+                  : (root.hyprInstalled ? "Update hyprmoncfg" : "Install hyprmoncfg")
+                iconText: root.hyprInstalling ? "󰦖" : (root.hyprInstalled ? "󰚰" : "󰏔")
+                iconSpinning: root.hyprInstalling
+                foreground: root.bar.foreground
+                fontFamily: root.bar.fontFamily
+                fontSize: Style.font.body
+                bordered: true
+                selected: true
+                enabled: root.hyprInstallKnown && !root.hyprInstalling
+                hasCursor: root.cursorActive && root.focusSection === "layouts" && root.selectedIndex === 0
+                onHovered: function(hovered) {
+                  if (!hovered || root.reflowingText) return
+                  root.cursorActive = true
+                  root.focusSection = "layouts"
+                  root.selectedIndex = 0
+                }
+                onClicked: root.installHyprmoncfg()
+              }
+            }
+
             Toggle {
               id: hyprManagedRow
               width: parent.width
               label: root.hyprProfileName
               description: root.hyprProfileDescription
               checked: root.hyprManaged
-              enabled: root.hyprInstalled && !root.hyprActionPending
+              visible: root.hyprCompatible
+              enabled: !root.hyprActionPending
               hasCursor: root.cursorActive && root.focusSection === "layouts" && root.selectedIndex === 0
               foreground: root.bar.foreground
               fontFamily: root.bar.fontFamily
@@ -1064,7 +1205,7 @@ Panel {
               hasCursor: root.cursorActive && root.focusSection === "layouts" && root.selectedIndex === 1
               onHasCursorChanged: if (hasCursor) root.ensureCursorVisible(hyprEditorRow)
               foreground: root.bar.foreground
-              opacity: root.hyprInstalled ? 1.0 : 0.55
+              visible: root.hyprCompatible
 
               Row {
                 id: hyprEditorContent
@@ -1121,7 +1262,7 @@ Panel {
               MouseArea {
                 anchors.fill: parent
                 hoverEnabled: true
-                cursorShape: root.hyprInstalled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                cursorShape: Qt.PointingHandCursor
                 onContainsMouseChanged: if (containsMouse && !root.reflowingText) {
                   root.cursorActive = true
                   root.focusSection = "layouts"

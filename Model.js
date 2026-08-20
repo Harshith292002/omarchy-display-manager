@@ -1,3 +1,19 @@
+function installCommand() {
+  return "rm -f \"$XDG_RUNTIME_DIR/hyprmoncfg-display-install.failed\" \"$XDG_RUNTIME_DIR/hyprmoncfg-display-install.complete\"; status=0; omarchy pkg aur add hyprmoncfg && systemctl --user enable hyprmoncfgd.service && systemctl --user restart hyprmoncfgd.service && setsid -f gtk-launch hyprmoncfg-omarchy >/dev/null 2>&1 || status=$?; if (( status == 0 )); then : > \"$XDG_RUNTIME_DIR/hyprmoncfg-display-install.complete\"; else printf '%s\\n' \"$status\" > \"$XDG_RUNTIME_DIR/hyprmoncfg-display-install.failed\"; fi; (exit \"$status\")"
+}
+
+function installProcessArgs() {
+  return [
+    "omarchy",
+    "launch",
+    "floating",
+    "terminal",
+    "with",
+    "presentation",
+    installCommand()
+  ]
+}
+
 function clampBrightness(value) {
   var n = Number(value)
   if (!isFinite(n)) return 1
@@ -111,14 +127,36 @@ function parseDisplays(raw) {
   }
 }
 
+function versionAtLeast(output, minimum) {
+  var text = String(output || "")
+  if (/\bdev\b/.test(text)) return true
+
+  function parts(value) {
+    var match = String(value || "").match(/v?(\d+)\.(\d+)\.(\d+)/)
+    return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null
+  }
+
+  var current = parts(text)
+  var wanted = parts(minimum)
+  if (!current || !wanted) return false
+  for (var i = 0; i < 3; i++) {
+    if (current[i] > wanted[i]) return true
+    if (current[i] < wanted[i]) return false
+  }
+  return true
+}
+
 if (typeof module !== "undefined") {
   module.exports = {
+    installCommand: installCommand,
+    installProcessArgs: installProcessArgs,
     clampBrightness: clampBrightness,
     normalizeScale: normalizeScale,
     cleanScale: cleanScale,
     matchingScaleIndex: matchingScaleIndex,
     availableScales: availableScales,
     brightnessName: brightnessName,
-    parseDisplays: parseDisplays
+    parseDisplays: parseDisplays,
+    versionAtLeast: versionAtLeast
   }
 }

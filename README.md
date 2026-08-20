@@ -5,8 +5,9 @@ multi-monitor layouts. It combines Omarchy's built-in Display panel with
 [hyprmoncfg](https://github.com/crmne/hyprmoncfg) profile status, automatic
 switching, and a shortcut to the visual layout editor.
 
-This repository is currently a private preview. The plugin is usable, but its
-first-run installation flow and public documentation are still being refined.
+If hyprmoncfg is missing or too old, the panel opens an ordinary Omarchy
+presented terminal for the install or update. No package installation or
+privileged command is hidden inside the shell process.
 
 ## Features
 
@@ -22,22 +23,12 @@ first-run installation flow and public documentation are still being refined.
 ## Requirements
 
 - Omarchy 4.0 or newer with shell plugin support
-- hyprmoncfg 1.12.0 or newer
+- hyprmoncfg 1.12.0 or newer (installable from the panel)
 
-Install and start hyprmoncfg before enabling the plugin:
-
-```sh
-omarchy pkg aur add hyprmoncfg
-systemctl --user enable --now hyprmoncfgd.service
-```
-
-## Install from the private repository
-
-The current private repository requires GitHub SSH access for
-`Harshith292002`:
+## Install
 
 ```sh
-omarchy plugin add git@github.com:Harshith292002/omarchy-display-manager.git --enable
+omarchy plugin add https://github.com/Harshith292002/omarchy-display-manager.git --enable
 ```
 
 The manifest declares that this plugin is a clone of `omarchy.monitor`, so
@@ -47,6 +38,14 @@ Open **Display → Open layout editor** to arrange the connected monitors and
 save a profile. hyprmoncfg profiles are hardware-specific and remain under
 `~/.config/hyprmoncfg/profiles/`; they are intentionally not stored in this
 repository.
+
+If prompted, choose **Install hyprmoncfg**. The visible installer runs:
+
+```sh
+omarchy pkg aur add hyprmoncfg
+systemctl --user enable hyprmoncfgd.service
+systemctl --user restart hyprmoncfgd.service
+```
 
 ## Update
 
@@ -62,6 +61,7 @@ The live plugin directory is also the Git checkout:
 ```sh
 cd ~/.config/omarchy/plugins/harshith.monitor
 omarchy plugin validate .
+node --test tests/model.test.js
 ```
 
 Changes under this directory are normally hot-reloaded by Omarchy. Restart the
